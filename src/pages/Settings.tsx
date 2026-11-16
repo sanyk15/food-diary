@@ -32,6 +32,14 @@ export default function Settings() {
     setForm(settings);
   }, [settings]);
 
+  // Модель приходит из аккаунта: на новом устройстве ключ вводится заново,
+  // а модель подставляется сохранённая.
+  useEffect(() => {
+    if (!llm.model && settings.llmModel) {
+      setLlm((prev) => ({ ...prev, model: settings.llmModel ?? '' }));
+    }
+  }, [settings.llmModel, llm.model]);
+
   function patchForm(patch: Partial<SettingsModel>) {
     setForm((prev) => ({ ...prev, ...patch }));
   }
@@ -50,10 +58,15 @@ export default function Settings() {
     }
   }
 
-  function saveLlm() {
+  async function saveLlm() {
     saveLlmConfig(llm);
-    setMessage('Настройки ИИ сохранены на этом устройстве.');
     setError(null);
+    try {
+      await updateSettings({ ...settings, llmModel: llm.model || null });
+      setMessage('Ключ сохранён на этом устройстве, модель синхронизирована с аккаунтом.');
+    } catch {
+      setMessage('Ключ сохранён на устройстве, но модель не удалось синхронизировать.');
+    }
   }
 
   async function loadModels() {
@@ -191,9 +204,15 @@ export default function Settings() {
             </div>
           </div>
 
-          <button className="btn btn-primary" onClick={saveLlm}>
+          <button className="btn btn-primary" onClick={() => void saveLlm()}>
             Сохранить ИИ
           </button>
+          <p className="card-hint">
+            Ключ остаётся на этом устройстве, модель синхронизируется с аккаунтом.
+            Для КБЖУ лучше всего <b>google/gemma-4-31b-it:free</b>: хорошо держит JSON
+            и не тратит токены на размышления. <b>openrouter/free</b> — запасной
+            вариант, если конкретная модель недоступна.
+          </p>
         </section>
 
         <section className="card">

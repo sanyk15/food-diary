@@ -7,6 +7,7 @@ import type { EntryInput, ProductInput } from '../lib/api';
 import { cacheGet, cacheSet } from '../lib/cache';
 import { addDays, todayKey } from '../lib/dates';
 import { round1 } from '../lib/nutrition';
+import { adoptModelFromSettings } from '../lib/llm';
 
 const HISTORY_DAYS = 180;
 
@@ -64,6 +65,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setProducts(loadedProducts);
       setEntries(loadedEntries);
       setSettings(loadedSettings);
+      // Модель синхронизируется через аккаунт; ключ остаётся на устройстве.
+      adoptModelFromSettings(loadedSettings.llmModel);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить данные.');
     } finally {

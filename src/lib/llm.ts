@@ -34,6 +34,20 @@ export interface FreeModel {
   name: string;
 }
 
+// Роутер, который сам выбирает случайную бесплатную модель. Не заканчивается
+// на :free, поэтому добавляем его отдельно.
+const FREE_ROUTER = 'openrouter/free';
+
+// Порядок для этой задачи: держат JSON, не тратят токены на размышления,
+// нормально понимают русский. Остальные free-модели — ниже по алфавиту.
+const PREFERRED = [
+  'google/gemma-4-31b-it:free',
+  'google/gemma-4-26b-a4b-it:free',
+  'inclusionai/ling-3.2-flash:free',
+  'thinkingmachines/inkling-2-small:free',
+  'baidu/ernie-5.5-flash-preview:free',
+];
+
 export function loadLlmConfig(): LlmConfig {
   try {
     return {
@@ -54,14 +68,36 @@ export function saveLlmConfig(config: LlmConfig): void {
   }
 }
 
+/** Подхватывает модель, сохранённую в аккаунте, если на этом устройстве её ещё нет. */
+export function adoptModelFromSettings(model: string | null): void {
+  if (!model) return;
+  try {
+    if (!localStorage.getItem(MODEL_STORAGE)) localStorage.setItem(MODEL_STORAGE, model);
+  } catch {
+    // ignore
+  }
+}
+
 export async function fetchFreeModels(): Promise<FreeModel[]> {
   const res = await fetch(`${BASE}/models`, { headers: { Accept: 'application/json' } });
   if (!res.ok) throw new Error(`Не удалось получить список моделей (${res.status}).`);
   const payload = (await res.json()) as { data?: Array<{ id: string; name?: string }> };
+
   const models = (payload.data ?? [])
-    .filter((model) => model.id.endsWith(':free'))
-    .map((model) => ({ id: model.id, name: model.name ?? model.id }))
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .filter((model) => model.id.endsWith(':free') || model.id === FREE_ROUTER)
+    .map((model) => ({ id: model.id, name: model.name ?? model.id }));
+
+  if (!models.some((model) => model.id === FREE_ROUTER)) {
+    models.push({ id: FREE_ROUTER, name: 'Free Models Router (авто)' });
+  }
+
+  const rank = new Map(PREFERRED.map((id, index) => [id, index]));
+  models.sort((a, b) => {
+    const ra = rank.get(a.id) ?? PREFERRED.length;
+    const rb = rank.get(b.id) ?? PREFERRED.length;
+    return ra - rb || a.id.localeCompare(b.id);
+  });
+
   if (models.length === 0) throw new Error('У OpenRouter сейчас нет бесплатных моделей.');
   return models;
 }
@@ -210,7 +246,7 @@ export async function estimateItems(
       { role: 'user', content: `Оцени КБЖУ: ${JSON.stringify(items)}` },
     ],
     config,
-    1600,
+    3000,
   );
   return parseEstimates(content);
 }
@@ -235,7 +271,7 @@ export async function adviseNutrition(summary: string, config: LlmConfig): Promi
       { role: 'user', content: summary },
     ],
     config,
-    900,
+    1200,
   );
 
   const parsed = extractJson(content);
