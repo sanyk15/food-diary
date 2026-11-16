@@ -6,6 +6,8 @@ import { matchProduct } from '../src/lib/match';
 import { scaleProduct } from '../src/lib/nutrition';
 import type { FoodProduct } from '../src/types';
 import foods from '../src/data/foods.json';
+import foodsExtra from '../src/data/foods-extra.json';
+import foodsBrands from '../src/data/foods-brands.json';
 
 interface SeedItem {
   name: string;
@@ -19,7 +21,13 @@ interface SeedItem {
   basis?: 'ready' | 'dry' | 'raw';
 }
 
-const products: FoodProduct[] = (foods as { items: SeedItem[] }).items.map((item, index) => ({
+const seedItems = [
+  ...(foods as { items: SeedItem[] }).items,
+  ...(foodsExtra as { items: SeedItem[] }).items,
+  ...(foodsBrands as { items: SeedItem[] }).items,
+];
+
+const products: FoodProduct[] = seedItems.map((item, index) => ({
   id: String(index),
   name: item.name,
   aliases: item.aliases ?? [],
@@ -71,6 +79,10 @@ const cases = [
   'Перекус 30г миндаль',
   '1 ст. л. сметаны',
   'Обед борщ 300г и хлеб 50г',
+  'Простоквашино творог 5% 150г',
+  'Сникерс 1 шт',
+  'KFC острые крылья 200г',
+  'Кола 0,5 л',
 ];
 
 console.log('\n=== Дополнительные случаи ===');

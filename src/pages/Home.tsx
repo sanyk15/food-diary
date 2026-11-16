@@ -140,9 +140,9 @@ export default function Home() {
           <div className="macros">
             {(
               [
-                ['protein', 'Белки', totals.protein, settings.targetProtein, 'var(--protein)'],
-                ['fat', 'Жиры', totals.fat, settings.targetFat, 'var(--fat)'],
-                ['carbs', 'Углеводы', totals.carbs, settings.targetCarbs, 'var(--carbs)'],
+                ['protein', 'Б', totals.protein, settings.targetProtein, 'var(--protein)'],
+                ['fat', 'Ж', totals.fat, settings.targetFat, 'var(--fat)'],
+                ['carbs', 'У', totals.carbs, settings.targetCarbs, 'var(--carbs)'],
               ] as const
             ).map(([key, label, value, target, color]) => (
               <div className="macro" key={key}>

@@ -78,7 +78,9 @@ App.tsx                      # ThemeProvider > HashRouter > AuthProvider > Root
 main.tsx
 types.ts                     # FoodProduct, FoodEntry, Settings, лейблы
 index.css                    # ВСЯ стилизация
-data/foods.json              # базовый справочник (seed, ~214 позиций)
+data/foods.json              # базовый справочник (seed)
+data/foods-extra.json        # расширение: продукты и блюда
+data/foods-brands.json       # популярные марки (значения по упаковке)
 components/
   EntrySheet.tsx             # ввод и разбор еды
   ProductForm.tsx            # создание/правка продукта
@@ -123,7 +125,11 @@ scripts/check.ts             # проверка parse/match на примера�
   показывается basis.
 - **Seed идемпотентен**: заливается только при пустой таблице; при `force`
   удаляются строки `source='seed'`, пользовательские и ИИ-продукты не трогаются.
-  Дубликаты по `lower(name)` пропускаются.
+  Три JSON-файла сливаются и дедуплицируются по `lower(name)` — иначе уникальный
+  индекс завалит всю вставку. Дубликаты с уже существующими строками
+  пропускаются.
+- **Брендовые позиции** (`foods-brands.json`) — значения по типичной упаковке,
+  состав у марок меняется; такие строки стоит сверять с этикеткой.
 - **Ключ OpenRouter — только в `localStorage`** (`food_llm_key`, `food_llm_model`),
   в БД не пишется. В `food_settings` есть неиспользуемая колонка `llm_model`.
 - **PostgREST отдаёт максимум 1000 строк.** Справочник сейчас меньше; при росте

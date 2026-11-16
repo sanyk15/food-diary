@@ -931,6 +931,9 @@ textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
+  /* Иначе flex-контейнер сжимает список до высоты экрана, а overflow: hidden
+     обрезает остаток — и внешний .content не получает прокрутки. */
+  flex: none;
 }
 
 .product-row {

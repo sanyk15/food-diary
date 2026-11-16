@@ -10,6 +10,8 @@ import type {
 } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
 import foodsJson from '../data/foods.json';
+import foodsExtraJson from '../data/foods-extra.json';
+import foodsBrandsJson from '../data/foods-brands.json';
 
 interface ProductRow {
   id: string;
@@ -161,36 +163,46 @@ interface SeedItem {
   basis?: Basis;
 }
 
-const SEED_ITEMS = (foodsJson as { items: SeedItem[] }).items;
+const RAW_SEED_ITEMS: SeedItem[] = [
+  ...(foodsJson as { items: SeedItem[] }).items,
+  ...(foodsExtraJson as { items: SeedItem[] }).items,
+  ...(foodsBrandsJson as { items: SeedItem[] }).items,
+];
 
-/**
- * Заливает справочник в БД. Без force — только если таблица пуста.
- * С force — удаляет прежние seed-строки и заливает заново (правки
- * пользователя и ИИ-продукты не трогаются).
- */
-export async function seedProducts(force = false): Promise<number> {
-  if (!force) {
-    const { count, error } = await supabase
-      .from('food_products')
-      .select('id', { count: 'exact', head: true });
-    if (error) throw error;
-    if ((count ?? 0) > 0) return 0;
-  } else {
-    const { error } = await supabase.from('food_products').delete().eq('source', 'seed');
-    if (error) throw error;
-  }
+// Дубликаты по имени (без учёта регистра) схлопываем: уникальный индекс
+// (user_id, lower(name)) иначе завалит всю вставку.
+const SEED_ITEMS: SeedItem[] = (() => {
+  const seen = new Set<string>();
+  return RAW_SEED_ITEMS.filter((item) => {
+    const key = item.name.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+})();
 
-  // Пропускаем позиции, которые уже есть (например, добавлены вручную):
-  // иначе уникальный индекс (user_id, lower(name)) завалит всю заливку.
-  const { data: existing, error: existingError } = await supabase
-    .from('food_products')
-    .select('name');
-  if (existingError) throw existingError;
-  const taken = new Set(
-    ((existing ?? []) as Array<{ name: string }>).map((row) => row.name.toLowerCase()),
-  );
+interface ExistingProductRow {
+  id: string;
+  name: string;
+  aliases: string[] | null;
+  category: string;
+  kcal: number;
+  protein: number;
+  fat: number;
+  carbs: number;
+  piece_grams: number | null;
+  basis: Basis;
+  source: ProductSource;
+}
 
-  const rows = SEED_ITEMS.filter((item) => !taken.has(item.name.toLowerCase())).map((item) => ({
+function sameAliases(left: string[] | null, right: string[]): boolean {
+  const a = [...(left ?? [])].map((value) => value.toLowerCase()).sort();
+  const b = [...right].map((value) => value.toLowerCase()).sort();
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+function seedRow(item: SeedItem) {
+  return {
     name: item.name,
     aliases: item.aliases ?? [],
     category: item.category ?? 'other',
@@ -201,16 +213,91 @@ export async function seedProducts(force = false): Promise<number> {
     piece_grams: item.pieceGrams ?? null,
     basis: item.basis ?? 'ready',
     source: 'seed' as const,
-  }));
+  };
+}
 
-  let inserted = 0;
-  for (let i = 0; i < rows.length; i += 100) {
-    const chunk = rows.slice(i, i + 100);
+/**
+ * Заливает справочник в БД. Без force — только если таблица пуста.
+ *
+ * С force не «удалить всё и вставить заново», а слить: неизменённые строки
+ * остаются с теми же id, поэтому записи дневника сохраняют ссылку на продукт.
+ * Удаляются только seed-строки, которых больше нет в наборе.
+ */
+export async function seedProducts(force = false): Promise<number> {
+  const { data: existingData, error: existingError } = await supabase
+    .from('food_products')
+    .select('id, name, aliases, category, kcal, protein, fat, carbs, piece_grams, basis, source');
+  if (existingError) throw existingError;
+
+  const existing = (existingData ?? []) as ExistingProductRow[];
+  if (!force && existing.length > 0) return 0;
+
+  const byName = new Map(existing.map((row) => [row.name.toLowerCase(), row]));
+  const seedNames = new Set(SEED_ITEMS.map((item) => item.name.toLowerCase()));
+
+  const toInsert: Array<ReturnType<typeof seedRow>> = [];
+  const toUpdate: Array<{ id: string; row: ReturnType<typeof seedRow> }> = [];
+
+  for (const item of SEED_ITEMS) {
+    const row = seedRow(item);
+    const current = byName.get(item.name.toLowerCase());
+
+    if (!current) {
+      toInsert.push(row);
+      continue;
+    }
+    // Ручной или ИИ-продукт с тем же именем не перезаписываем.
+    if (current.source !== 'seed') continue;
+
+    const changed =
+      Number(current.kcal) !== row.kcal ||
+      Number(current.protein) !== row.protein ||
+      Number(current.fat) !== row.fat ||
+      Number(current.carbs) !== row.carbs ||
+      Number(current.piece_grams ?? -1) !== Number(row.piece_grams ?? -1) ||
+      current.basis !== row.basis ||
+      current.category !== row.category ||
+      !sameAliases(current.aliases, row.aliases);
+
+    if (changed) toUpdate.push({ id: current.id, row });
+  }
+
+  const toDelete = force
+    ? existing
+        .filter((row) => row.source === 'seed' && !seedNames.has(row.name.toLowerCase()))
+        .map((row) => row.id)
+    : [];
+
+  for (let i = 0; i < toInsert.length; i += 100) {
+    const chunk = toInsert.slice(i, i + 100);
     const { error } = await supabase.from('food_products').insert(chunk);
     if (error) throw error;
-    inserted += chunk.length;
   }
-  return inserted;
+
+  for (const { id, row } of toUpdate) {
+    const { error } = await supabase
+      .from('food_products')
+      .update({
+        aliases: row.aliases,
+        category: row.category,
+        kcal: row.kcal,
+        protein: row.protein,
+        fat: row.fat,
+        carbs: row.carbs,
+        piece_grams: row.piece_grams,
+        basis: row.basis,
+      })
+      .eq('id', id);
+    if (error) throw error;
+  }
+
+  for (let i = 0; i < toDelete.length; i += 100) {
+    const chunk = toDelete.slice(i, i + 100);
+    const { error } = await supabase.from('food_products').delete().in('id', chunk);
+    if (error) throw error;
+  }
+
+  return toInsert.length + toUpdate.length;
 }
 
 // ── Дневник ────────────────────────────────────────────────────
