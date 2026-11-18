@@ -42,14 +42,6 @@ interface EntryRow {
   assumption: string | null;
 }
 
-interface SettingsRow {
-  target_kcal: number;
-  target_protein: number;
-  target_fat: number;
-  target_carbs: number;
-  llm_model: string | null;
-}
-
 function mapProduct(row: ProductRow): FoodProduct {
   return {
     id: row.id,
@@ -380,19 +372,32 @@ export async function deleteEntry(id: string): Promise<void> {
 // ── Настройки ──────────────────────────────────────────────────
 
 export async function fetchSettings(): Promise<Settings> {
-  const { data, error } = await supabase
-    .from('food_settings')
-    .select('target_kcal, target_protein, target_fat, target_carbs, llm_model')
-    .maybeSingle();
+  // select('*'), а не список колонок: если миграция с advice_* ещё не
+  // выполнена, приложение продолжит работать без синхронизации советов.
+  const { data, error } = await supabase.from('food_settings').select('*').maybeSingle();
   if (error) throw error;
   if (!data) return DEFAULT_SETTINGS;
-  const row = data as SettingsRow;
+
+  const row = data as {
+    target_kcal: number;
+    target_protein: number;
+    target_fat: number;
+    target_carbs: number;
+    llm_model: string | null;
+    advice_tips?: unknown;
+    advice_updated_at?: unknown;
+  };
+
   return {
     targetKcal: row.target_kcal,
     targetProtein: row.target_protein,
     targetFat: row.target_fat,
     targetCarbs: row.target_carbs,
     llmModel: row.llm_model,
+    adviceTips: Array.isArray(row.advice_tips)
+      ? row.advice_tips.filter((tip): tip is string => typeof tip === 'string')
+      : null,
+    adviceUpdatedAt: typeof row.advice_updated_at === 'string' ? row.advice_updated_at : null,
   };
 }
 
@@ -401,7 +406,7 @@ export async function saveSettings(settings: Settings): Promise<void> {
   const userId = data.user?.id;
   if (!userId) throw new Error('Нет активной сессии.');
 
-  const { error } = await supabase.from('food_settings').upsert({
+  const base = {
     user_id: userId,
     target_kcal: settings.targetKcal,
     target_protein: settings.targetProtein,
@@ -409,6 +414,17 @@ export async function saveSettings(settings: Settings): Promise<void> {
     target_carbs: settings.targetCarbs,
     llm_model: settings.llmModel,
     updated_at: new Date().toISOString(),
+  };
+
+  let { error } = await supabase.from('food_settings').upsert({
+    ...base,
+    advice_tips: settings.adviceTips,
+    advice_updated_at: settings.adviceUpdatedAt,
   });
+
+  // Колонки советов появляются миграцией; без неё сохраняем остальные настройки.
+  if (error && /advice_tips|advice_updated_at/i.test(error.message)) {
+    ({ error } = await supabase.from('food_settings').upsert(base));
+  }
   if (error) throw error;
 }

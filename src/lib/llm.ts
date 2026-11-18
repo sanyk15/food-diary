@@ -79,7 +79,14 @@ export function adoptModelFromSettings(model: string | null): void {
 }
 
 export async function fetchFreeModels(): Promise<FreeModel[]> {
-  const res = await fetch(`${BASE}/models`, { headers: { Accept: 'application/json' } });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/models`, { headers: { Accept: 'application/json' } });
+  } catch {
+    throw new Error(
+      'Не удалось связаться с OpenRouter с этого устройства. Проверь интернет: если сеть мобильная, попробуй Wi-Fi.',
+    );
+  }
   if (!res.ok) throw new Error(`Не удалось получить список моделей (${res.status}).`);
   const payload = (await res.json()) as { data?: Array<{ id: string; name?: string }> };
 
@@ -131,7 +138,7 @@ async function chat(
   maxTokens: number,
 ): Promise<string> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 60_000);
+  const timer = setTimeout(() => controller.abort(), 90_000);
 
   try {
     const res = await fetch(`${BASE}/chat/completions`, {
@@ -168,7 +175,13 @@ async function chat(
     return payload.choices?.[0]?.message?.content ?? '';
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('Модель не ответила за минуту. Попробуй ещё раз или другую модель.');
+      throw new Error('Модель не ответила за полторы минуты. Попробуй ещё раз или другую модель.');
+    }
+    // Safari/iOS на сетевой сбой бросает TypeError с текстом «Load failed».
+    if (error instanceof TypeError) {
+      throw new Error(
+        'Не удалось связаться с OpenRouter с этого устройства. Проверь интернет (на мобильной сети попробуй Wi-Fi) и держи приложение открытым — iOS обрывает запрос, если свернуть его или заблокировать экран.',
+      );
     }
     throw error;
   } finally {

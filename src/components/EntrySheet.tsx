@@ -27,6 +27,8 @@ interface DraftItem {
   productName: string | null;
   candidates: MatchCandidate[];
   manualOpen: boolean;
+  searchOpen: boolean;
+  searchQuery: string;
 }
 
 const ZERO: Totals = { kcal: 0, protein: 0, fat: 0, carbs: 0 };
@@ -63,6 +65,8 @@ function buildDraft(parsed: ParsedItem, products: FoodProduct[]): DraftItem {
     productName: product?.name ?? null,
     candidates,
     manualOpen: false,
+    searchOpen: false,
+    searchQuery: '',
   };
 }
 
@@ -125,23 +129,28 @@ export default function EntrySheet({ date, defaultMeal, onClose }: Props) {
     setDrafts((prev) => prev.map((draft) => (draft.key === key ? { ...draft, ...patch } : draft)));
   }
 
-  function pickProduct(draft: DraftItem, candidate: MatchCandidate) {
+  function applyProduct(draft: DraftItem, product: FoodProduct) {
     updateDraft(draft.key, {
-      productId: candidate.product.id,
-      productName: candidate.product.name,
+      productId: product.id,
+      productName: product.name,
       source: 'product',
+      searchOpen: false,
       per100: {
-        kcal: candidate.product.kcal,
-        protein: candidate.product.protein,
-        fat: candidate.product.fat,
-        carbs: candidate.product.carbs,
+        kcal: product.kcal,
+        protein: product.protein,
+        fat: product.fat,
+        carbs: product.carbs,
       },
     });
     haptic();
   }
 
-  async function runEstimate(target: DraftItem[]) {
-    const missing = target.filter((draft) => draft.productId === null);
+  function pickProduct(draft: DraftItem, candidate: MatchCandidate) {
+    applyProduct(draft, candidate.product);
+  }
+
+  async function runEstimate(target: DraftItem[], force = false) {
+    const missing = force ? target : target.filter((draft) => draft.productId === null);
     if (missing.length === 0) return;
 
     const config = loadLlmConfig();
@@ -270,6 +279,16 @@ export default function EntrySheet({ date, defaultMeal, onClose }: Props) {
                 const matchedProduct = draft.productId
                   ? products.find((product) => product.id === draft.productId)
                   : null;
+                const needle = draft.searchQuery.trim().toLowerCase().replace(/ё/g, 'е');
+                const searchResults = needle
+                  ? products
+                      .filter((product) =>
+                        [product.name, ...product.aliases].some((value) =>
+                          value.toLowerCase().replace(/ё/g, 'е').includes(needle),
+                        ),
+                      )
+                      .slice(0, 8)
+                  : [];
                 return (
                   <div className="draft" key={draft.key}>
                     <div className="draft-head">
@@ -366,11 +385,21 @@ export default function EntrySheet({ date, defaultMeal, onClose }: Props) {
                     )}
 
                     <div className="draft-tools">
-                      {draft.productId === null && (
-                        <button className="link-btn" onClick={() => void runEstimate([draft])} disabled={llmBusy}>
-                          {llmBusy ? 'Оцениваю…' : 'Оценить через ИИ'}
-                        </button>
-                      )}
+                      <button
+                        className="link-btn"
+                        onClick={() =>
+                          updateDraft(draft.key, { searchOpen: !draft.searchOpen })
+                        }
+                      >
+                        {draft.searchOpen ? 'Скрыть поиск' : 'Найти в справочнике'}
+                      </button>
+                      <button
+                        className="link-btn"
+                        onClick={() => void runEstimate([draft], true)}
+                        disabled={llmBusy}
+                      >
+                        {llmBusy ? 'Оцениваю…' : 'Помощь ИИ'}
+                      </button>
                       <button
                         className="link-btn"
                         onClick={() => updateDraft(draft.key, { manualOpen: !draft.manualOpen })}
@@ -409,6 +438,42 @@ export default function EntrySheet({ date, defaultMeal, onClose }: Props) {
                           </label>
                         ))}
                         <div className="manual-hint">на 100 г</div>
+                      </div>
+                    )}
+
+                    {draft.searchOpen && (
+                      <div className="product-search">
+                        <input
+                          className="search-input"
+                          value={draft.searchQuery}
+                          onChange={(e) =>
+                            updateDraft(draft.key, { searchQuery: e.target.value })
+                          }
+                          placeholder="Название продукта или марки"
+                          autoFocus
+                        />
+                        <div className="search-results">
+                          {needle === '' && (
+                            <div className="search-hint">
+                              Начни вводить название — например, «творог» или «простоквашино».
+                            </div>
+                          )}
+                          {needle !== '' && searchResults.length === 0 && (
+                            <div className="search-hint">
+                              Ничего не нашлось. Можно нажать «Помощь ИИ» или ввести КБЖУ вручную.
+                            </div>
+                          )}
+                          {searchResults.map((product) => (
+                            <button
+                              key={product.id}
+                              className="search-result"
+                              onClick={() => applyProduct(draft, product)}
+                            >
+                              <span>{product.name}</span>
+                              <em>{Math.round(product.kcal)} ккал/100 г</em>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>

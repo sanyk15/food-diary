@@ -56,7 +56,9 @@ textarea → parse.ts → match.ts → (не нашлось) llm.ts → черн
    проверка `ккал ≈ 4Б + 9Ж + 4У` (±30%) в `nutrition.ts`. Ответ сопоставляется
    с позициями **по названию**, не по порядку.
 4. Черновик: граммы и **приём пищи** редактируются, КБЖУ пересчитывается;
-   можно выбрать другой продукт из кандидатов или ввести КБЖУ вручную.
+   можно выбрать другой продукт из кандидатов, **найти любой продукт через
+   поиск по справочнику** или **переоценить позицию через ИИ** (кнопка «Помощь
+   ИИ» доступна всегда, даже если кандидат уже выбран), либо ввести КБЖУ вручную.
 
 Оценка ИИ запускается **только для ненайденных позиций**: автоматически после
 разбора (если ключ настроен) и точечно кнопкой на конкретной позиции.
@@ -107,7 +109,7 @@ scripts/check.ts             # проверка parse/match на примера�
 |---|---|---|
 | `food_products` | `name, aliases[], category, kcal, protein, fat, carbs, piece_grams, basis, source` | справочник, значения на 100 г |
 | `food_entries` | `date, meal, name, grams, kcal, protein, fat, carbs, product_id, source, assumption` | записи; КБЖУ — снимок |
-| `food_settings` | `target_kcal, target_protein, target_fat, target_carbs` | цели на день |
+| `food_settings` | `target_kcal, target_protein, target_fat, target_carbs, advice_tips, advice_updated_at` | цели и последние советы ИИ |
 
 - RLS на всех таблицах: `auth.uid() = user_id`.
 - `basis`: `ready` (готовый), `dry` (сухой вес), `raw` (сырой) — показывается
@@ -131,7 +133,15 @@ scripts/check.ts             # проверка parse/match на примера�
 - **Брендовые позиции** (`foods-brands.json`) — значения по типичной упаковке,
   состав у марок меняется; такие строки стоит сверять с этикеткой.
 - **Ключ OpenRouter — только в `localStorage`** (`food_llm_key`, `food_llm_model`),
-  в БД не пишется. В `food_settings` есть неиспользуемая колонка `llm_model`.
+  в БД не пишется. Модель дополнительно сохраняется в `food_settings.llm_model`
+  и подхватывается на других устройствах (`adoptModelFromSettings`).
+- **Советы ИИ синхронизируются** через `food_settings.advice_tips` +
+  `advice_updated_at`. Если колонок ещё нет (миграция не выполнена),
+  `fetchSettings` использует `select('*')`, а `saveSettings` повторяет upsert
+  без advice-полей — приложение не падает.
+- **`load failed` на iOS** — это `TypeError` от `fetch` (сеть/обрыв), а не ответ
+  модели. `chat()` переводит его в понятное сообщение; таймаут 90 с.
+  iOS обрывает запрос, если свернуть приложение или заблокировать экран.
 - **PostgREST отдаёт максимум 1000 строк.** Справочник сейчас меньше; при росте
   добавить пагинацию в `fetchProducts` (как `selectAll()` в соседних проектах).
 - **Модалки — `createPortal` в `document.body`** + `interactive-widget=resizes-content`

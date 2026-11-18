@@ -45,6 +45,9 @@ export interface Settings {
   targetFat: number;
   targetCarbs: number;
   llmModel: string | null;
+  /** Последние советы от ИИ — синхронизируются между устройствами. */
+  adviceTips: string[] | null;
+  adviceUpdatedAt: string | null;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -53,6 +56,8 @@ export const DEFAULT_SETTINGS: Settings = {
   targetFat: 70,
   targetCarbs: 250,
   llmModel: null,
+  adviceTips: null,
+  adviceUpdatedAt: null,
 };
 
 export interface Totals {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import NavBar from '../components/NavBar';
 import { useData } from '../context/DataContext';
 import { todayKey } from '../lib/dates';
@@ -16,12 +16,17 @@ const TONE_ICON: Record<Advice['tone'], string> = {
 const RANGES = [7, 14, 30];
 
 export default function AdvicePage() {
-  const { entries, products, settings } = useData();
+  const { entries, products, settings, updateSettings } = useData();
   const [days, setDays] = useState(7);
-  const [tips, setTips] = useState<string[] | null>(null);
+  const [tips, setTips] = useState<string[] | null>(settings.adviceTips);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const today = todayKey();
+
+  // Советы приходят из аккаунта: на другом устройстве они подставятся сами.
+  useEffect(() => {
+    if (!tips && settings.adviceTips) setTips(settings.adviceTips);
+  }, [settings.adviceTips, tips]);
 
   const advice = useMemo(
     () => buildAdvice({ entries, products, settings, today, days }),
@@ -39,7 +44,17 @@ export default function AdvicePage() {
     setError(null);
     try {
       const summary = buildSummary({ entries, products, settings, today, days });
-      setTips(await adviseNutrition(summary, config));
+      const next = await adviseNutrition(summary, config);
+      setTips(next);
+      try {
+        await updateSettings({
+          ...settings,
+          adviceTips: next,
+          adviceUpdatedAt: new Date().toISOString(),
+        });
+      } catch {
+        // Советы показываем локально, даже если не удалось сохранить в аккаунт.
+      }
       haptic([10, 30, 10]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось получить советы.');
@@ -63,10 +78,7 @@ export default function AdvicePage() {
             <button
               key={range}
               className={`segmented-item ${days === range ? 'segmented-active' : ''}`}
-              onClick={() => {
-                setDays(range);
-                setTips(null);
-              }}
+              onClick={() => setDays(range)}
             >
               {range} дней
             </button>
@@ -105,6 +117,18 @@ export default function AdvicePage() {
                   <span>{tip}</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {tips && settings.adviceUpdatedAt && (
+            <div className="advice-updated">
+              Сохранено{' '}
+              {new Date(settings.adviceUpdatedAt).toLocaleString('ru-RU', {
+                day: 'numeric',
+                month: 'long',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
             </div>
           )}
         </section>

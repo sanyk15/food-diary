@@ -770,6 +770,51 @@ textarea {
   flex-wrap: wrap;
 }
 
+.product-search {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.search-result {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 13px;
+  text-align: left;
+}
+
+.search-result:active {
+  background: var(--surface-2);
+}
+
+.search-result em {
+  font-style: normal;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.search-hint {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  padding: 2px 0;
+}
+
 .manual-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -1082,6 +1127,11 @@ textarea {
   font-size: 11px;
   font-weight: 700;
   flex: none;
+}
+
+.advice-updated {
+  font-size: 12px;
+  color: var(--muted);
 }
 
 /* ── Вход ───────────────────────────────────────────── */

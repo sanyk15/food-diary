@@ -66,8 +66,14 @@ create table if not exists public.food_settings (
   target_fat     integer not null default 70,
   target_carbs   integer not null default 250,
   llm_model      text,
+  advice_tips    jsonb,
+  advice_updated_at timestamptz,
   updated_at     timestamptz not null default now()
 );
+
+-- Для баз, созданных до появления советов ИИ.
+alter table public.food_settings add column if not exists advice_tips jsonb;
+alter table public.food_settings add column if not exists advice_updated_at timestamptz;
 
 -- ── Индексы ────────────────────────────────────────────────────
 create index if not exists food_products_user_idx on public.food_products (user_id, category);

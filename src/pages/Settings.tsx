@@ -49,7 +49,13 @@ export default function Settings() {
     setError(null);
     setMessage(null);
     try {
-      await updateSettings(form);
+      await updateSettings({
+        ...settings,
+        targetKcal: form.targetKcal,
+        targetProtein: form.targetProtein,
+        targetFat: form.targetFat,
+        targetCarbs: form.targetCarbs,
+      });
       setMessage('Цели сохранены.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось сохранить цели.');
